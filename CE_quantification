@@ -1,0 +1,207 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Sun May 19 12:39:58 2024
+
+@author: ehlab
+"""
+
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import os
+plt.rc('font',family='Arial',size=16)
+
+# from scipy.optimize import curve_fit
+# # 定义指数函数
+# def exp_func(x, a, b):
+#     return a *x**b
+
+# def exp_dev(x,a,b):
+#     return a*b*x*(b-1)
+
+from scipy.optimize import curve_fit
+def tri_equation(x, a, b,c,d):
+    return a * x**3 + b *x**2+c*x+d
+
+def tri_dev(x, a, b,c):
+    return 3*a * x**2 + 2*b *x+c
+
+def R2(x,y,pre):
+# 计算均值
+    mean_observed = np.mean(y)
+# 计算总平方和（Total Sum of Squares，TSS）
+    tss = np.sum((y - mean_observed)**2)
+# 计算残差平方和（Residual Sum of Squares，RSS）
+    rss = np.sum((y - pre)**2)
+# 计算决定系数（R-squared）
+    r_squared = 1 - (rss / tss)
+    return r_squared
+
+
+def R2(x,y,pre):
+# 计算均值
+    mean_observed = np.mean(y)
+# 计算总平方和（Total Sum of Squares，TSS）
+    tss = np.sum((y - mean_observed)**2)
+# 计算残差平方和（Residual Sum of Squares，RSS）
+    rss = np.sum((y - pre)**2)
+# 计算决定系数（R-squared）
+    r_squared = 1 - (rss / tss)
+    return r_squared
+
+GUB_city = pd.read_csv(r"H:\CE_temporal\data\GUB_global_100_wgs.csv")
+GUB_city.index = GUB_city['ObjectID']
+
+disolve_lookuptable = pd.read_csv(r"H:\CE_temporal\data\dissolve_lookuptable.csv")
+disolve_lookuptable.index = disolve_lookuptable['ObjectID']
+
+south_list = list(np.unique(pd.read_csv(r"H:\CE_temporal\data\GUB_global_100_wgs_south.csv")['ObjectID']))
+
+all_list = [x for x in range(853)]
+north_list = [x for x in all_list if x not in south_list]
+
+m = 7
+bname_list1 = [8]
+# bname_all = [x for x in range(1,24)]
+# bname_list2 = [x for x in bname_all if x not in bname_list1]
+
+for bname in bname_list1:
+    year = str(1999+bname)
+    bname = "b"+str(bname)
+
+    coeff = pd.DataFrame(np.nan,columns=['a','b','c','d','R2','NAME_0','NAME_1','NAME_2','CE_10','CE_20','CE_30'],
+                         index=north_list,dtype='float')
+
+    for inte in north_list:
+        if inte not in disolve_lookuptable.index:
+            if os.path.exists(r"H:\CE_temporal\data\night\global_LST_night_"+year+"\\"+str(inte)+".csv")==False or os.path.exists(r"H:\CE_temporal\data\GLC_data\global_GLC_PTree_"+year+"\\"+str(inte)+".csv")==False:
+                    continue
+            ptree = pd.read_csv(r"H:\CE_temporal\data\GLC_data\global_GLC_PTree_"+year+"\\"+str(inte)+".csv")
+            ptree.index = ptree['gridID']
+            
+            lst = pd.read_csv(r"H:\CE_temporal\data\night\global_LST_night_"+year+"\\"+str(inte)+".csv")
+            lst.index = lst['gridID']
+    
+            data = pd.merge(lst,ptree, left_index=True, right_index=True)
+            data.replace(-9999, np.nan, inplace=True)
+
+            date_list = data.columns[1:-7]
+            print(str(inte)+" start")
+
+        else:
+            if inte != disolve_lookuptable[disolve_lookuptable['dis_ID']==disolve_lookuptable['dis_ID'][inte]].index[0]:
+                continue
+            else:
+                dis_id = list(disolve_lookuptable[disolve_lookuptable['dis_ID']==disolve_lookuptable['dis_ID'][inte]].index)
+                
+                data = pd.DataFrame()
+                for dis in dis_id:
+                    if os.path.exists(r"H:\CE_temporal\data\GLC_data\global_GLC_PTree_"+year+"\\"+str(dis)+".csv")==False or os.path.exists(r"H:\CE_temporal\data\night\global_LST_night_"+year+"\\"+str(dis)+".csv")==False:
+                        continue
+                    ptree = pd.read_csv(r"H:\CE_temporal\data\GLC_data\global_GLC_PTree_"+year+"\\"+str(dis)+".csv")
+                    ptree.index = ptree['gridID']
+                    lst = pd.read_csv(r"H:\CE_temporal\data\night\global_LST_night_"+year+"\\"+str(dis)+".csv")
+                    lst.index = lst['gridID']
+                    data_tmp = pd.merge(lst,ptree, left_index=True, right_index=True)
+                    data = pd.concat([data,data_tmp])
+                    
+                data.replace(-9999, np.nan, inplace=True)
+
+                date_list = data.columns[1:-7]
+                print(str(inte)+" start")
+
+        date_list5 = [d for d in date_list if d.split("_")[1] == "07"]
+        
+        data_May = pd.DataFrame()
+        for d in date_list5:
+            tmp = data[[d,bname]]
+            tmp = tmp.dropna()
+            tmp[d] = tmp[d]*0.02
+            tmp[bname] = tmp[bname]/(34*34)
+            tmp = tmp.rename(columns={d: 'lst'})
+            data_May = pd.concat([data_May,tmp])
+    
+            #去掉相同的值
+        x = []
+        y = []
+        ptree_list = np.array(np.unique(data_May[bname]))
+        for ptree in ptree_list:
+            x.append(ptree)
+            y.append(np.nanmean(data_May['lst'][data_May[bname] == ptree]))
+    
+        data_post = pd.DataFrame(columns=['lst','ptree'])
+        data_post['lst'] = y
+        data_post['ptree'] = x
+    
+    #按数据间隔
+        inter = [((xi+1)/50) for xi in range(50)]
+        x = []
+        y = []
+
+        for numxi in range(len(inter)):
+            if numxi == 0:
+                tmp = data_post[(data_post['ptree']>0) & (data_post['ptree']<inter[numxi])]
+            else:
+                tmp = data_post[(data_post['ptree']>=inter[numxi-1]) & (data_post['ptree']<inter[numxi])]
+            x.append(np.nanmean(tmp['ptree']))
+            y.append(np.nanmean(tmp['lst']))
+
+        x = np.array(x)
+        y = np.array(y)
+
+        x = x[np.isnan(y)==False]
+        y = y[np.isnan(y)==False]
+    
+        x = np.array(x)
+        y = np.array(y)
+
+        if len(x)<20:
+            continue
+
+        # params, covariance = curve_fit(exp_func, x, y)
+        # a, b = params
+        params, covariance = curve_fit(tri_equation, x, y)
+        a, b,c,d = params
+        
+        coeff['a'][inte] = a
+        coeff['b'][inte] = b
+        coeff['c'][inte] = c
+        coeff['d'][inte] = d
+        coeff['R2'][inte] = R2(x,y,tri_equation(x,a,b,c,d))
+        if np.nanmax(data_post['ptree'])>=0.1:
+            coeff['CE_10'][inte] = -tri_dev(0.1,a,b,c)
+        if np.nanmax(data_post['ptree'])>=0.2:
+            coeff['CE_20'][inte] = -tri_dev(0.2,a,b,c)
+        if np.nanmax(data_post['ptree'])>=0.3: 
+            coeff['CE_30'][inte] = -tri_dev(0.3,a,b,c)
+        coeff['NAME_0'][inte] = GUB_city['NAME_0'][inte]
+        coeff['NAME_1'][inte] = GUB_city['NAME_1'][inte]
+        coeff['NAME_2'][inte] = GUB_city['NAME_2'][inte]
+    
+        # #     #coeff[d]['inter'] = coeff_tmp[1]
+        # fig,ax = plt.subplots(figsize=(6,4))
+        # fig.subplots_adjust(left=0.15, right=0.95, top=0.95, bottom=0.15)
+        # plt.scatter(x,y,color='black')
+        # # plt.plot(x, model.predict(x),'r-','Logistics')
+        # plt.plot(x, tri_equation(x,a,b,c,d),'b-')
+        # plt.xlabel("TCP")
+        # plt.ylabel('LST')
+        # if isinstance(GUB_city['NAME_2'][inte],float)==False:
+        #     plt.title(GUB_city['NAME_0'][inte]+"-"+GUB_city['NAME_1'][inte]+"-"+GUB_city['NAME_2'][inte])
+        # else:
+        #     plt.title(GUB_city['NAME_0'][inte]+"-"+GUB_city['NAME_1'][inte])
+    
+        # ax = plt.gca()
+        # # ax.text(0.8,0.7,"R2 Log="+str(round(R2(x,y,model.predict(x)),2)),va="center",bbox=dict(boxstyle="round",ec=(1., 0.5, 0.5),fc=(1., 0.8, 0.8),),size=16, transform = ax.transAxes)
+        # ax.text(0.1,0.2,"R2="+str(round(R2(x,y,tri_equation(x,a,b,c,d)),2)),va="center",bbox=dict(boxstyle="round",ec=(1., 0.5, 0.5),fc=(1., 0.8, 0.8),),size=16,transform = ax.transAxes)
+        
+        # plt.tight_layout()
+        
+        # if os.path.exists(r"H:\CE_temporal\data\night_process\figs\\"+year+"_night_north") == False:
+        #     os.mkdir(r"H:\CE_temporal\data\night_process\figs\\"+year+"_night_north")
+        # plt.savefig(r"H:\CE_temporal\data\night_process\figs\\"+year+"_night_north\\"+str(inte)+".tif",dpi=300)
+           
+
+
+    coeff.to_csv(r"H:\CE_temporal\data\night_process\para\north_"+year+"_07_night_tri.csv")
+    
